@@ -15,14 +15,23 @@
     ::-webkit-scrollbar{width:4px;height:4px;}
     ::-webkit-scrollbar-track{background:#0a0f1e;}
     ::-webkit-scrollbar-thumb{background:#1e3a5f;border-radius:2px;}
+    @keyframes fadeIn{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:translateY(0);}}
+    .fade{animation:fadeIn 0.25s ease;}
+    @keyframes pulse{0%,100%{opacity:1;}50%{opacity:0.5;}}
+    .pulse{animation:pulse 2s infinite;}
   </style>
 </head>
 <body>
 <div id="root"></div>
 
 <script type="text/babel">
-const { useState, useEffect, useCallback } = React;
+const { useState, useEffect, useCallback, useMemo } = React;
 
+const JANUARY_ENTRIES = [
+  200,300,200,700,300,250,200,500,350,350,
+  1200,400,1150,1000,450,800,800,400,2050,
+  660,360,300,500
+];
 const FEBRUARY_ENTRIES = [
   700,350,500,400,400,350,2000,210,300,750,
   700,250,500,300,300,200,350,300,600,400,
@@ -43,23 +52,29 @@ const EXPENSE_CATS = ["Rent","Airtime/Data","Equipment Purchase",
 
 const C = {
   bg:"#0a0f1e",panel:"#111827",card:"#1a2235",border:"#1e3a5f",navy:"#0d2137",
-  gold:"#f5a623",cyan:"#00d4ff",green:"#00e676",red:"#ff5252",
+  gold:"#f5a623",cyan:"#00d4ff",green:"#00e676",red:"#ff5252",purple:"#a78bfa",
   text:"#e8edf5",muted:"#6b7fa3",
 };
 
-const fmt = n => "KSh " + Number(n).toLocaleString("en-KE");
+const fmt  = n => "KSh " + Number(n).toLocaleString("en-KE");
+const fmtD = d => { const [y,m,day]=d.split("-"); return `${day}/${m}/${y}`; };
+const today = () => new Date().toISOString().split("T")[0];
+const todayLabel = () => {
+  const d = new Date();
+  return d.toLocaleDateString("en-KE",{weekday:"long",day:"numeric",month:"long",year:"numeric"});
+};
 
 const store = {
-  get: k => { try { const v=localStorage.getItem(k); return v?JSON.parse(v):null; } catch{return null;} },
-  set: (k,v) => { try { localStorage.setItem(k,JSON.stringify(v)); } catch{} }
+  get: k => { try{ const v=localStorage.getItem(k); return v?JSON.parse(v):null; }catch{return null;} },
+  set: (k,v) => { try{ localStorage.setItem(k,JSON.stringify(v)); }catch{} }
 };
 
 function exportPDF(month, year, incomes, expenses) {
   const run = () => {
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF({unit:"mm",format:"a4"});
-    const W=210, M=18;
-    const hex = h => [parseInt(h.slice(1,3),16)/255,parseInt(h.slice(3,5),16)/255,parseInt(h.slice(5,7),16)/255];
+    const W=210,M=18;
+    const hex = h=>[parseInt(h.slice(1,3),16)/255,parseInt(h.slice(3,5),16)/255,parseInt(h.slice(5,7),16)/255];
     doc.setFillColor(...hex("#0d2137")); doc.rect(0,0,W,36,"F");
     doc.setFillColor(...hex("#f5a623")); doc.rect(0,0,W,2,"F");
     doc.setTextColor(...hex("#f5a623")); doc.setFont("helvetica","bold"); doc.setFontSize(16);
@@ -123,16 +138,251 @@ function exportPDF(month, year, incomes, expenses) {
   s.onload=run; document.head.appendChild(s);
 }
 
+// ── DAILY VIEW COMPONENT ──────────────────────────────────────────────────
+function DailyView({ entries, expenses }) {
+  const td = today();
+  const [selDate, setSelDate] = useState(td);
+
+  // Get all unique dates that have transactions
+  const allDates = useMemo(() => {
+    const dates = new Set([
+      ...entries.map(e=>e.date),
+      ...expenses.map(e=>e.date),
+    ]);
+    return Array.from(dates).sort((a,b)=>b>a?1:-1);
+  }, [entries, expenses]);
+
+  const dayInc  = entries.filter(e=>e.date===selDate);
+  const dayExp  = expenses.filter(e=>e.date===selDate);
+  const dayTotI = dayInc.reduce((s,e)=>s+e.amount,0);
+  const dayTotE = dayExp.reduce((s,e)=>s+e.amount,0);
+  const dayNet  = dayTotI - dayTotE;
+
+  // Today stats
+  const todayInc  = entries.filter(e=>e.date===td);
+  const todayExp  = expenses.filter(e=>e.date===td);
+  const todayTotI = todayInc.reduce((s,e)=>s+e.amount,0);
+  const todayTotE = todayExp.reduce((s,e)=>s+e.amount,0);
+  const todayNet  = todayTotI - todayTotE;
+
+  // Running balance for current month
+  const curMonth = MONTHS[new Date().getMonth()];
+  const curYear  = String(new Date().getFullYear());
+  const monthDays = useMemo(()=>{
+    const days = {};
+    [...entries.filter(e=>e.month===curMonth&&e.year===curYear),
+     ...expenses.filter(e=>e.month===curMonth&&e.year===curYear)]
+    .forEach(e=>{
+      if(!days[e.date]) days[e.date]={date:e.date,inc:0,exp:0};
+      if(e.category||e.note) days[e.date].inc += e.amount;
+      else days[e.date].exp += e.amount;
+    });
+    entries.filter(e=>e.month===curMonth&&e.year===curYear)
+      .forEach(e=>{ if(!days[e.date]) days[e.date]={date:e.date,inc:0,exp:0}; days[e.date].inc+=e.amount; });
+    expenses.filter(e=>e.month===curMonth&&e.year===curYear)
+      .forEach(e=>{ if(!days[e.date]) days[e.date]={date:e.date,inc:0,exp:0}; days[e.date].exp+=e.amount; });
+    return Object.values(days).sort((a,b)=>a.date>b.date?1:-1);
+  },[entries,expenses,curMonth,curYear]);
+
+  // Best day this month
+  const bestDay = monthDays.length ? monthDays.reduce((a,b)=>b.inc>a.inc?b:a,monthDays[0]) : null;
+
+  // Running cumulative
+  let running = 0;
+  const withRunning = monthDays.map(d=>{
+    running += (d.inc - d.exp);
+    return {...d, running};
+  });
+  const maxDayInc = Math.max(...monthDays.map(d=>d.inc),1);
+
+  return (
+    <div className="fade">
+      {/* TODAY HERO */}
+      <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:10,padding:16,marginBottom:12,borderTop:`3px solid ${C.gold}`}}>
+        <div style={{fontSize:9,color:C.gold,letterSpacing:3,marginBottom:4}}>📅 TODAY</div>
+        <div style={{fontSize:11,color:C.muted,marginBottom:10}}>{todayLabel()}</div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
+          {[
+            {label:"INCOME",   value:fmt(todayTotI), color:C.green},
+            {label:"EXPENSES", value:fmt(todayTotE), color:C.red},
+            {label:"NET",      value:fmt(todayNet),  color:todayNet>=0?C.gold:C.red},
+          ].map((k,i)=>(
+            <div key={i} style={{background:C.navy,borderRadius:6,padding:"8px 6px",textAlign:"center"}}>
+              <div style={{fontSize:8,color:C.muted,letterSpacing:1,marginBottom:4}}>{k.label}</div>
+              <div style={{fontSize:12,fontWeight:"bold",color:k.color}}>{k.value}</div>
+            </div>
+          ))}
+        </div>
+        {todayTotI===0&&todayTotE===0&&(
+          <div style={{marginTop:10,fontSize:11,color:C.muted,textAlign:"center"}}>
+            No transactions recorded today yet.<br/>
+            <span style={{color:C.cyan}}>Tap "+ Add Entry" to record one now.</span>
+          </div>
+        )}
+        {todayInc.map((e,i)=>(
+          <div key={e.id} style={{display:"flex",justifyContent:"space-between",marginTop:8,
+            padding:"6px 8px",background:C.navy,borderRadius:6,borderLeft:`2px solid ${C.green}`}}>
+            <div>
+              <div style={{fontSize:11,color:C.text}}>{e.note}</div>
+              <div style={{fontSize:9,color:C.cyan}}>{e.category}</div>
+            </div>
+            <div style={{color:C.green,fontWeight:"bold",fontSize:12}}>+{fmt(e.amount)}</div>
+          </div>
+        ))}
+        {todayExp.map((e,i)=>(
+          <div key={e.id} style={{display:"flex",justifyContent:"space-between",marginTop:8,
+            padding:"6px 8px",background:C.navy,borderRadius:6,borderLeft:`2px solid ${C.red}`}}>
+            <div>
+              <div style={{fontSize:11,color:C.text}}>{e.supplier}</div>
+              <div style={{fontSize:9,color:C.red}}>{e.type}</div>
+            </div>
+            <div style={{color:C.red,fontWeight:"bold",fontSize:12}}>-{fmt(e.amount)}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* THIS MONTH STATS */}
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12}}>
+        <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:8,padding:12}}>
+          <div style={{fontSize:8,color:C.muted,letterSpacing:2,marginBottom:4}}>🏆 BEST DAY THIS MONTH</div>
+          {bestDay ? <>
+            <div style={{fontSize:14,fontWeight:"bold",color:C.gold}}>{fmtD(bestDay.date)}</div>
+            <div style={{fontSize:11,color:C.green,marginTop:2}}>{fmt(bestDay.inc)}</div>
+          </> : <div style={{fontSize:11,color:C.muted}}>No data yet</div>}
+        </div>
+        <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:8,padding:12}}>
+          <div style={{fontSize:8,color:C.muted,letterSpacing:2,marginBottom:4}}>📊 ACTIVE DAYS</div>
+          <div style={{fontSize:14,fontWeight:"bold",color:C.cyan}}>{monthDays.length} days</div>
+          <div style={{fontSize:11,color:C.muted,marginTop:2}}>{curMonth} {curYear}</div>
+        </div>
+      </div>
+
+      {/* DAILY BAR CHART */}
+      {monthDays.length > 0 && (
+        <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:8,padding:14,marginBottom:12}}>
+          <div style={{fontSize:9,color:C.muted,letterSpacing:3,marginBottom:12}}>◈ DAILY INCOME — {curMonth.toUpperCase()}</div>
+          <div style={{display:"flex",alignItems:"flex-end",gap:4,overflowX:"auto",paddingBottom:4}}>
+            {withRunning.map((d,i)=>{
+              const h = Math.max(4,(d.inc/maxDayInc)*70);
+              const isToday = d.date===td;
+              return(
+                <div key={i} onClick={()=>setSelDate(d.date)}
+                  style={{display:"flex",flexDirection:"column",alignItems:"center",minWidth:28,cursor:"pointer"}}>
+                  <div style={{fontSize:7,color:isToday?C.gold:C.muted,marginBottom:2,fontWeight:isToday?"bold":"normal"}}>
+                    {d.inc>0?fmt(d.inc).replace("KSh ",""):""}
+                  </div>
+                  <div style={{
+                    width:isToday?18:14, height:h,
+                    background:isToday?`linear-gradient(to top,${C.gold},${C.gold}88)`:
+                      selDate===d.date?`linear-gradient(to top,${C.cyan},${C.cyan}88)`:
+                      `linear-gradient(to top,${C.cyan},${C.gold}44)`,
+                    borderRadius:"2px 2px 0 0",
+                    border:isToday?`1px solid ${C.gold}`:selDate===d.date?`1px solid ${C.cyan}`:"none",
+                    transition:"all 0.2s"
+                  }}/>
+                  <div style={{fontSize:7,color:isToday?C.gold:C.muted,marginTop:2,fontWeight:isToday?"bold":"normal"}}>
+                    {d.date.split("-")[2]}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          <div style={{fontSize:8,color:C.muted,marginTop:6}}>
+            Tap a bar to see that day's transactions ↑
+          </div>
+        </div>
+      )}
+
+      {/* SELECTED DAY DETAIL */}
+      <div style={{background:C.card,border:`1px solid ${selDate===td?C.gold:C.border}`,borderRadius:8,padding:14,marginBottom:12}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+          <div>
+            <div style={{fontSize:9,color:C.muted,letterSpacing:3}}>
+              {selDate===td?"📅 TODAY":"📅 SELECTED DAY"}
+            </div>
+            <div style={{fontSize:13,fontWeight:"bold",color:C.text,marginTop:2}}>{fmtD(selDate)}</div>
+          </div>
+          <div style={{textAlign:"right"}}>
+            <div style={{fontSize:12,color:C.green,fontWeight:"bold"}}>+{fmt(dayTotI)}</div>
+            {dayTotE>0&&<div style={{fontSize:11,color:C.red}}>-{fmt(dayTotE)}</div>}
+            <div style={{fontSize:12,fontWeight:"bold",color:dayNet>=0?C.gold:C.red}}>{fmt(dayNet)}</div>
+          </div>
+        </div>
+
+        {/* Date picker */}
+        <input type="date" value={selDate} onChange={e=>setSelDate(e.target.value)}
+          style={{width:"100%",background:C.navy,border:`1px solid ${C.border}`,borderRadius:6,
+            padding:"7px 10px",color:C.text,fontFamily:"inherit",fontSize:12,outline:"none",
+            marginBottom:10,boxSizing:"border-box"}}/>
+
+        {dayInc.length===0&&dayExp.length===0&&(
+          <div style={{color:C.muted,fontSize:11,textAlign:"center",padding:"10px 0"}}>
+            No transactions on this date.
+          </div>
+        )}
+        {dayInc.map((e,i)=>(
+          <div key={e.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",
+            padding:"8px",marginBottom:4,background:C.navy,borderRadius:6,borderLeft:`3px solid ${C.green}`}}>
+            <div>
+              <div style={{fontSize:11,color:C.text}}>{e.note}</div>
+              <div style={{fontSize:9,color:C.cyan}}>{e.category}</div>
+            </div>
+            <div style={{color:C.green,fontWeight:"bold",fontSize:12}}>+{fmt(e.amount)}</div>
+          </div>
+        ))}
+        {dayExp.map((e,i)=>(
+          <div key={e.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",
+            padding:"8px",marginBottom:4,background:C.navy,borderRadius:6,borderLeft:`3px solid ${C.red}`}}>
+            <div>
+              <div style={{fontSize:11,color:C.text}}>{e.supplier}</div>
+              <div style={{fontSize:9,color:C.red}}>{e.type}</div>
+            </div>
+            <div style={{color:C.red,fontWeight:"bold",fontSize:12}}>-{fmt(e.amount)}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* RUNNING BALANCE TABLE */}
+      {withRunning.length>0&&(
+        <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:8,padding:14}}>
+          <div style={{fontSize:9,color:C.muted,letterSpacing:3,marginBottom:10}}>◈ RUNNING BALANCE — {curMonth.toUpperCase()}</div>
+          <div style={{display:"grid",gridTemplateColumns:"70px 1fr 1fr 1fr",fontSize:8,
+            color:C.muted,letterSpacing:2,marginBottom:6,padding:"0 4px"}}>
+            <div>DATE</div>
+            <div style={{textAlign:"right"}}>INCOME</div>
+            <div style={{textAlign:"right"}}>EXPENSES</div>
+            <div style={{textAlign:"right"}}>BALANCE</div>
+          </div>
+          {withRunning.map((d,i)=>(
+            <div key={d.date} style={{display:"grid",gridTemplateColumns:"70px 1fr 1fr 1fr",
+              alignItems:"center",padding:"6px 4px",
+              borderTop:`1px solid ${C.border}`,
+              background:d.date===td?"rgba(245,166,35,0.06)":"transparent"}}>
+              <span style={{fontSize:10,color:d.date===td?C.gold:C.text,fontWeight:d.date===td?"bold":"normal"}}>
+                {fmtD(d.date)}{d.date===td?" ★":""}
+              </span>
+              <span style={{fontSize:9,color:C.green,textAlign:"right"}}>{d.inc>0?fmt(d.inc):"—"}</span>
+              <span style={{fontSize:9,color:C.red,textAlign:"right"}}>{d.exp>0?fmt(d.exp):"—"}</span>
+              <span style={{fontSize:10,fontWeight:"bold",color:d.running>=0?C.gold:C.red,textAlign:"right"}}>{fmt(d.running)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── MAIN APP ──────────────────────────────────────────────────────────────
 function App() {
   const now = new Date();
-  const [view,setView]       = useState("dashboard");
-  const [entries,setEntries] = useState([]);
+  const [view,setView]         = useState("daily");
+  const [entries,setEntries]   = useState([]);
   const [expenses,setExpenses] = useState([]);
-  const [loaded,setLoaded]   = useState(false);
-  const [toast,setToast]     = useState(null);
-  const [subView,setSubView] = useState("income");
-  const [fMonth,setFMonth]   = useState("All");
-  const [fYear,setFYear]     = useState("All");
+  const [loaded,setLoaded]     = useState(false);
+  const [toast,setToast]       = useState(null);
+  const [subView,setSubView]   = useState("income");
+  const [fMonth,setFMonth]     = useState("All");
+  const [fYear,setFYear]       = useState("All");
   const [iForm,setIForm] = useState({amount:"",category:INCOME_CATS[0],note:"",month:MONTHS[now.getMonth()],year:String(now.getFullYear())});
   const [eForm,setEForm] = useState({amount:"",type:EXPENSE_CATS[0],supplier:"",month:MONTHS[now.getMonth()],year:String(now.getFullYear())});
 
@@ -144,16 +394,25 @@ function App() {
     if(!inc){
       inc = [
         ...MARCH_ENTRIES.map((amt,i)=>({id:`mar_${i}`,amount:amt,category:INCOME_CATS[i%INCOME_CATS.length],note:`Mar transaction #${i+1}`,month:"March",year:"2026",date:`2026-03-${String(i+1).padStart(2,"0")}`})),
+        {id:"mar_31_eod",amount:700,category:"Miscellaneous",note:"End of day collection",month:"March",year:"2026",date:"2026-03-31"},
         ...FEBRUARY_ENTRIES.map((amt,i)=>({id:`feb_${i}`,amount:amt,category:INCOME_CATS[i%INCOME_CATS.length],note:`Feb transaction #${i+1}`,month:"February",year:"2026",date:`2026-02-${String(i+1).padStart(2,"0")}`})),
+        ...JANUARY_ENTRIES.map((amt,i)=>({id:`jan_${i}`,amount:amt,category:INCOME_CATS[i%INCOME_CATS.length],note:`Jan transaction #${i+1}`,month:"January",year:"2026",date:`2026-01-${String(i+1).padStart(2,"0")}`})),
       ];
       store.set("mactelecom_entries",inc);
       store.set("mactelecom_expenses",exp);
     } else {
-      inc = inc.map(e=>e.year==="2025"&&e.month==="February"?{...e,year:"2026",date:e.date.replace("2025-02","2026-02")}:e);
+      inc=inc.map(e=>e.year==="2025"&&e.month==="February"?{...e,year:"2026",date:e.date.replace("2025-02","2026-02")}:e);
       if(!inc.some(e=>e.month==="March"&&e.year==="2026")){
         const ms=MARCH_ENTRIES.map((amt,i)=>({id:`mar_${i}`,amount:amt,category:INCOME_CATS[i%INCOME_CATS.length],note:`Mar transaction #${i+1}`,month:"March",year:"2026",date:`2026-03-${String(i+1).padStart(2,"0")}`}));
-        inc=[...ms,...inc];
+        inc=[...ms,...inc]; store.set("mactelecom_entries",inc);
+      }
+      if(!inc.some(e=>e.id==="mar_31_eod")){
+        inc=[...inc,{id:"mar_31_eod",amount:700,category:"Miscellaneous",note:"End of day collection",month:"March",year:"2026",date:"2026-03-31"}];
         store.set("mactelecom_entries",inc);
+      }
+      if(!inc.some(e=>e.month==="January"&&e.year==="2026")){
+        const js=JANUARY_ENTRIES.map((amt,i)=>({id:`jan_${i}`,amount:amt,category:INCOME_CATS[i%INCOME_CATS.length],note:`Jan transaction #${i+1}`,month:"January",year:"2026",date:`2026-01-${String(i+1).padStart(2,"0")}`}));
+        inc=[...inc,...js]; store.set("mactelecom_entries",inc);
       }
     }
     setEntries(inc); setExpenses(exp); setLoaded(true);
@@ -161,15 +420,17 @@ function App() {
 
   const addIncome = () => {
     if(!iForm.amount||isNaN(+iForm.amount)||+iForm.amount<=0){showToast("Enter a valid amount","err");return;}
-    const e={id:Date.now().toString(),amount:+iForm.amount,category:iForm.category,note:iForm.note||"—",month:iForm.month,year:iForm.year,date:new Date().toISOString().split("T")[0]};
+    const e={id:Date.now().toString(),amount:+iForm.amount,category:iForm.category,note:iForm.note||"—",month:iForm.month,year:iForm.year,date:today()};
     const u=[e,...entries]; setEntries(u); store.set("mactelecom_entries",u);
     setIForm(f=>({...f,amount:"",note:""})); showToast("Income recorded ✓");
+    setView("daily");
   };
   const addExpense = () => {
     if(!eForm.amount||isNaN(+eForm.amount)||+eForm.amount<=0){showToast("Enter a valid amount","err");return;}
-    const e={id:Date.now().toString(),amount:+eForm.amount,type:eForm.type,supplier:eForm.supplier||"—",month:eForm.month,year:eForm.year,date:new Date().toISOString().split("T")[0]};
+    const e={id:Date.now().toString(),amount:+eForm.amount,type:eForm.type,supplier:eForm.supplier||"—",month:eForm.month,year:eForm.year,date:today()};
     const u=[e,...expenses]; setExpenses(u); store.set("mactelecom_expenses",u);
     setEForm(f=>({...f,amount:"",supplier:""})); showToast("Expense recorded ✓");
+    setView("daily");
   };
   const delIncome  = id => { const u=entries.filter(e=>e.id!==id);  setEntries(u);  store.set("mactelecom_entries",u);  showToast("Deleted","err"); };
   const delExpense = id => { const u=expenses.filter(e=>e.id!==id); setExpenses(u); store.set("mactelecom_expenses",u); showToast("Deleted","err"); };
@@ -186,13 +447,15 @@ function App() {
   const byCat   = INCOME_CATS.map(c=>({cat:c,total:fInc.filter(e=>e.category===c).reduce((s,e)=>s+e.amount,0),count:fInc.filter(e=>e.category===c).length})).filter(c=>c.total>0).sort((a,b)=>b.total-a.total);
   const byExpCat= EXPENSE_CATS.map(c=>({cat:c,total:fExp.filter(e=>e.type===c).reduce((s,e)=>s+e.amount,0),count:fExp.filter(e=>e.type===c).length})).filter(c=>c.total>0).sort((a,b)=>b.total-a.total);
 
-  const S = (base,extra={}) => ({...base,...extra});
+  // Today quick badge
+  const todayTotal = entries.filter(e=>e.date===today()).reduce((s,e)=>s+e.amount,0);
+
   const inp=(val,cb,ph,type="text")=><input type={type} value={val} placeholder={ph} onChange={e=>cb(e.target.value)} style={{width:"100%",background:C.panel,border:`1px solid ${C.border}`,borderRadius:6,padding:"9px 12px",color:C.text,fontFamily:"inherit",fontSize:13,outline:"none",boxSizing:"border-box"}}/>;
   const sel=(val,cb,opts)=><select value={val} onChange={e=>cb(e.target.value)} style={{width:"100%",background:C.panel,border:`1px solid ${C.border}`,borderRadius:6,padding:"9px 10px",color:C.text,fontFamily:"inherit",fontSize:12,outline:"none"}}>{opts.map(o=><option key={o}>{o}</option>)}</select>;
   const lbl=t=><div style={{fontSize:9,color:C.muted,letterSpacing:2,marginBottom:5}}>{t}</div>;
   const card=(ch,ex={})=><div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:8,padding:16,...ex}}>{ch}</div>;
   const tabBtn=(id,label,active,color)=><button onClick={()=>setSubView(id)} style={{background:active?color:"transparent",color:active?C.bg:C.muted,border:`1px solid ${active?color:C.border}`,borderRadius:4,padding:"5px 14px",cursor:"pointer",fontSize:10,fontFamily:"inherit",fontWeight:"bold",letterSpacing:1,textTransform:"uppercase"}}>{label}</button>;
-  const kpi=(label,value,color)=><div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:8,padding:14,borderTop:`3px solid ${color}`}}><div style={{fontSize:9,color:C.muted,letterSpacing:3,marginBottom:7}}>{label.toUpperCase()}</div><div style={{fontSize:19,fontWeight:"bold",color}}>{value}</div></div>;
+  const kpi=(label,value,color,top=false)=><div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:8,padding:14,[top?"borderTop":"borderLeft"]:`3px solid ${color}`}}><div style={{fontSize:9,color:C.muted,letterSpacing:3,marginBottom:7}}>{label.toUpperCase()}</div><div style={{fontSize:19,fontWeight:"bold",color}}>{value}</div></div>;
 
   const filterBar=(
     <div style={{display:"flex",gap:10,marginBottom:14,flexWrap:"wrap",alignItems:"center"}}>
@@ -212,53 +475,81 @@ function App() {
     </div>
   );
 
-  const nav=[{id:"dashboard",label:"Dashboard",icon:"◈"},{id:"add",label:"Add Entry",icon:"+"},{id:"ledger",label:"Ledger",icon:"≡"},{id:"analytics",label:"Analytics",icon:"◉"}];
+  const nav=[
+    {id:"daily",    label:"Daily",    icon:"📅"},
+    {id:"dashboard",label:"Overview", icon:"◈"},
+    {id:"add",      label:"Add",      icon:"+"},
+    {id:"ledger",   label:"Ledger",   icon:"≡"},
+    {id:"analytics",label:"Reports",  icon:"◉"},
+  ];
 
   const pdfInc = fMonth==="All"?entries:entries.filter(e=>e.month===fMonth&&(fYear==="All"||e.year===fYear));
   const pdfExp = fMonth==="All"?expenses:expenses.filter(e=>e.month===fMonth&&(fYear==="All"||e.year===fYear));
 
   return (
     <div style={{minHeight:"100vh",background:C.bg,color:C.text,fontFamily:"'Courier New',Courier,monospace"}}>
-      <div style={{position:"fixed",inset:0,zIndex:0,pointerEvents:"none",backgroundImage:`radial-gradient(circle at 15% 15%,rgba(0,212,255,0.05) 0%,transparent 55%),radial-gradient(circle at 85% 85%,rgba(245,166,35,0.05) 0%,transparent 55%)`}}/>
+      <div style={{position:"fixed",inset:0,zIndex:0,pointerEvents:"none",
+        backgroundImage:`radial-gradient(circle at 15% 15%,rgba(0,212,255,0.05) 0%,transparent 55%),
+          radial-gradient(circle at 85% 85%,rgba(245,166,35,0.05) 0%,transparent 55%)`}}/>
 
       {/* HEADER */}
-      <div style={{position:"sticky",top:0,zIndex:100,background:"rgba(10,15,30,0.97)",backdropFilter:"blur(12px)",borderBottom:`1px solid ${C.border}`,padding:"10px 16px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+      <div style={{position:"sticky",top:0,zIndex:100,background:"rgba(10,15,30,0.97)",
+        backdropFilter:"blur(12px)",borderBottom:`1px solid ${C.border}`,
+        padding:"10px 16px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
         <div>
           <div style={{fontSize:9,color:C.cyan,letterSpacing:4}}>MACTELECOM NETWORKS</div>
           <div style={{fontSize:14,fontWeight:"bold",color:C.gold,letterSpacing:1}}>FINANCIAL FLOW SYSTEM</div>
         </div>
-        <div style={{display:"flex",gap:8,alignItems:"center"}}>
-          <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:6,padding:"4px 10px",fontSize:9,color:C.muted}}>
-            {loaded?`${entries.length} inc · ${expenses.length} exp`:"..."}
-          </div>
+        <div style={{display:"flex",gap:6,alignItems:"center"}}>
+          {todayTotal>0&&(
+            <div className="pulse" style={{background:"rgba(0,230,118,0.15)",border:`1px solid ${C.green}`,
+              borderRadius:6,padding:"4px 8px",fontSize:9,color:C.green,fontWeight:"bold"}}>
+              TODAY: {fmt(todayTotal)}
+            </div>
+          )}
           <button onClick={()=>exportPDF(fMonth==="All"?"All":fMonth,fYear==="All"?"All":fYear,pdfInc,pdfExp)}
-            style={{background:C.gold,color:C.bg,border:"none",borderRadius:6,padding:"6px 12px",fontSize:10,fontWeight:"bold",fontFamily:"inherit",cursor:"pointer"}}>
+            style={{background:C.gold,color:C.bg,border:"none",borderRadius:6,padding:"6px 10px",
+              fontSize:10,fontWeight:"bold",fontFamily:"inherit",cursor:"pointer"}}>
             ↓ PDF
           </button>
         </div>
       </div>
 
       {/* NAV */}
-      <div style={{display:"flex",gap:3,padding:"8px 16px",borderBottom:`1px solid ${C.border}`,background:C.panel,position:"relative",zIndex:10,overflowX:"auto"}}>
+      <div style={{display:"flex",gap:2,padding:"8px 12px",borderBottom:`1px solid ${C.border}`,
+        background:C.panel,position:"relative",zIndex:10,overflowX:"auto"}}>
         {nav.map(n=>(
-          <button key={n.id} onClick={()=>setView(n.id)} style={{background:view===n.id?C.cyan:"transparent",color:view===n.id?C.bg:C.muted,border:`1px solid ${view===n.id?C.cyan:C.border}`,borderRadius:4,padding:"5px 11px",cursor:"pointer",fontSize:10,letterSpacing:1,fontFamily:"inherit",fontWeight:view===n.id?"bold":"normal",whiteSpace:"nowrap"}}>
+          <button key={n.id} onClick={()=>setView(n.id)}
+            style={{background:view===n.id?C.cyan:"transparent",
+              color:view===n.id?C.bg:C.muted,
+              border:`1px solid ${view===n.id?C.cyan:C.border}`,
+              borderRadius:4,padding:"5px 10px",cursor:"pointer",
+              fontSize:10,letterSpacing:1,fontFamily:"inherit",
+              fontWeight:view===n.id?"bold":"normal",whiteSpace:"nowrap",
+              position:"relative"}}>
             {n.icon} {n.label}
+            {n.id==="daily"&&todayTotal>0&&view!=="daily"&&(
+              <span style={{position:"absolute",top:-3,right:-3,width:7,height:7,
+                background:C.green,borderRadius:"50%",border:`1px solid ${C.bg}`}}/>
+            )}
           </button>
         ))}
       </div>
 
-      <div style={{padding:"16px",position:"relative",zIndex:1}}>
+      <div style={{padding:"14px",position:"relative",zIndex:1}}>
+
+        {/* DAILY VIEW */}
+        {view==="daily"&&<DailyView entries={entries} expenses={expenses}/>}
 
         {/* DASHBOARD */}
         {view==="dashboard"&&(
-          <div>
-            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:10,marginBottom:14}}>
-              {kpi("All-Time Income",  fmt(entries.reduce((s,e)=>s+e.amount,0)),  C.gold)}
-              {kpi("All-Time Expense", fmt(expenses.reduce((s,e)=>s+e.amount,0)), C.red)}
-              {kpi("Net All-Time",     fmt(entries.reduce((s,e)=>s+e.amount,0)-expenses.reduce((s,e)=>s+e.amount,0)), C.green)}
-              {kpi("Best Month",       topMonth.month, C.cyan)}
+          <div className="fade">
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:10,marginBottom:12}}>
+              {kpi("All-Time Income",  fmt(entries.reduce((s,e)=>s+e.amount,0)),  C.gold, true)}
+              {kpi("All-Time Expense", fmt(expenses.reduce((s,e)=>s+e.amount,0)), C.red,  true)}
+              {kpi("Net All-Time",     fmt(entries.reduce((s,e)=>s+e.amount,0)-expenses.reduce((s,e)=>s+e.amount,0)), C.green, true)}
+              {kpi("Best Month",       topMonth.month, C.cyan, true)}
             </div>
-
             {card(<>
               <div style={{fontSize:9,color:C.muted,letterSpacing:3,marginBottom:12}}>◈ MONTHLY CASH FLOW</div>
               <div style={{display:"flex",alignItems:"flex-end",gap:4,overflowX:"auto",paddingBottom:4}}>
@@ -282,15 +573,15 @@ function App() {
                 <span style={{fontSize:8,color:C.red}}>■ Expenses</span>
               </div>
             </>,{marginBottom:10})}
-
             {card(<>
               <div style={{fontSize:9,color:C.muted,letterSpacing:3,marginBottom:10}}>≡ RECENT TRANSACTIONS</div>
               {[...entries.slice(0,3).map(e=>({...e,_t:"income"})),...expenses.slice(0,2).map(e=>({...e,_t:"expense"}))]
                 .sort((a,b)=>b.date>a.date?1:-1).slice(0,5).map((e,i,arr)=>(
-                <div key={e.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"7px 0",borderBottom:i<arr.length-1?`1px solid ${C.border}`:"none"}}>
+                <div key={e.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",
+                  padding:"7px 0",borderBottom:i<arr.length-1?`1px solid ${C.border}`:"none"}}>
                   <div>
                     <div style={{fontSize:11,color:C.text}}>{e.category||e.type}</div>
-                    <div style={{fontSize:9,color:C.muted}}>{e.month} {e.year} · {e.note||e.supplier}</div>
+                    <div style={{fontSize:9,color:C.muted}}>{fmtD(e.date)} · {e.note||e.supplier}</div>
                   </div>
                   <div style={{color:e._t==="income"?C.green:C.red,fontWeight:"bold",fontSize:13}}>
                     {e._t==="income"?"+":"-"}{fmt(e.amount)}
@@ -303,7 +594,7 @@ function App() {
 
         {/* ADD ENTRY */}
         {view==="add"&&(
-          <div style={{maxWidth:520}}>
+          <div style={{maxWidth:520}} className="fade">
             <div style={{display:"flex",gap:8,marginBottom:12}}>
               {tabBtn("income","+ Income",subView==="income",C.green)}
               {tabBtn("expense","- Expense",subView==="expense",C.red)}
@@ -317,7 +608,11 @@ function App() {
                 <div>{lbl("MONTH")}{sel(iForm.month,v=>setIForm(f=>({...f,month:v})),MONTHS)}</div>
               </div>
               <div style={{marginBottom:12}}>{lbl("YEAR")}{inp(iForm.year,v=>setIForm(f=>({...f,year:v})),"2026","number")}</div>
-              <button onClick={addIncome} style={{width:"100%",background:C.green,color:C.bg,border:"none",borderRadius:6,padding:"11px",fontSize:12,fontWeight:"bold",fontFamily:"inherit",cursor:"pointer",letterSpacing:2}}>+ RECORD INCOME</button>
+              <button onClick={addIncome} style={{width:"100%",background:C.green,color:C.bg,border:"none",
+                borderRadius:6,padding:"12px",fontSize:13,fontWeight:"bold",fontFamily:"inherit",
+                cursor:"pointer",letterSpacing:2}}>
+                + RECORD INCOME
+              </button>
             </>)}
             {subView==="expense"&&card(<>
               <div style={{fontSize:9,color:C.red,letterSpacing:3,marginBottom:12}}>RECORD EXPENSE</div>
@@ -328,14 +623,18 @@ function App() {
                 <div>{lbl("MONTH")}{sel(eForm.month,v=>setEForm(f=>({...f,month:v})),MONTHS)}</div>
               </div>
               <div style={{marginBottom:12}}>{lbl("YEAR")}{inp(eForm.year,v=>setEForm(f=>({...f,year:v})),"2026","number")}</div>
-              <button onClick={addExpense} style={{width:"100%",background:C.red,color:C.bg,border:"none",borderRadius:6,padding:"11px",fontSize:12,fontWeight:"bold",fontFamily:"inherit",cursor:"pointer",letterSpacing:2}}>- RECORD EXPENSE</button>
+              <button onClick={addExpense} style={{width:"100%",background:C.red,color:C.bg,border:"none",
+                borderRadius:6,padding:"12px",fontSize:13,fontWeight:"bold",fontFamily:"inherit",
+                cursor:"pointer",letterSpacing:2}}>
+                - RECORD EXPENSE
+              </button>
             </>)}
           </div>
         )}
 
         {/* LEDGER */}
         {view==="ledger"&&(
-          <div>
+          <div className="fade">
             {filterBar}
             <div style={{display:"flex",gap:8,marginBottom:10}}>
               {tabBtn("income",`Income (${fInc.length})`,subView==="income",C.green)}
@@ -347,8 +646,8 @@ function App() {
               </div>
               {fInc.length===0&&<div style={{padding:14,color:C.muted,fontSize:11,textAlign:"center"}}>No income for this filter.</div>}
               {fInc.map((e,i)=>(
-                <div key={e.id} style={{display:"grid",gridTemplateColumns:"70px 1fr 110px 90px 36px",padding:"8px",gap:4,alignItems:"center",borderTop:`1px solid ${C.border}`,background:i%2===0?"transparent":"rgba(255,255,255,0.02)"}}>
-                  <div style={{fontSize:8,color:C.muted}}>{e.date}</div>
+                <div key={e.id} style={{display:"grid",gridTemplateColumns:"70px 1fr 110px 90px 36px",padding:"8px",gap:4,alignItems:"center",borderTop:`1px solid ${C.border}`,background:e.date===today()?"rgba(245,166,35,0.05)":i%2===0?"transparent":"rgba(255,255,255,0.02)"}}>
+                  <div style={{fontSize:9,color:e.date===today()?C.gold:C.muted,fontWeight:e.date===today()?"bold":"normal"}}>{fmtD(e.date)}</div>
                   <div><div style={{fontSize:11,color:C.text,overflow:"hidden",whiteSpace:"nowrap",textOverflow:"ellipsis"}}>{e.note}</div><div style={{fontSize:8,color:C.cyan}}>{e.category}</div></div>
                   <div style={{fontSize:11,color:C.green,fontWeight:"bold"}}>{fmt(e.amount)}</div>
                   <div style={{fontSize:8,color:C.muted}}>{e.month} {e.year}</div>
@@ -363,7 +662,7 @@ function App() {
               {fExp.length===0&&<div style={{padding:14,color:C.muted,fontSize:11,textAlign:"center"}}>No expenses recorded yet.</div>}
               {fExp.map((e,i)=>(
                 <div key={e.id} style={{display:"grid",gridTemplateColumns:"70px 1fr 110px 90px 36px",padding:"8px",gap:4,alignItems:"center",borderTop:`1px solid ${C.border}`,background:i%2===0?"transparent":"rgba(255,255,255,0.02)"}}>
-                  <div style={{fontSize:8,color:C.muted}}>{e.date}</div>
+                  <div style={{fontSize:9,color:C.muted}}>{fmtD(e.date)}</div>
                   <div><div style={{fontSize:11,color:C.text,overflow:"hidden",whiteSpace:"nowrap",textOverflow:"ellipsis"}}>{e.supplier}</div><div style={{fontSize:8,color:C.red}}>{e.type}</div></div>
                   <div style={{fontSize:11,color:C.red,fontWeight:"bold"}}>{fmt(e.amount)}</div>
                   <div style={{fontSize:8,color:C.muted}}>{e.month} {e.year}</div>
@@ -376,7 +675,7 @@ function App() {
 
         {/* ANALYTICS */}
         {view==="analytics"&&(
-          <div>
+          <div className="fade">
             {filterBar}
             <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:10,marginBottom:12}}>
               {kpi("Total Income",   fmt(totInc),  C.green)}
@@ -384,7 +683,6 @@ function App() {
               {kpi("Net Profit",     fmt(net),      net>=0?C.gold:C.red)}
               {kpi("Avg Income",     fmt(fInc.length?Math.round(totInc/fInc.length):0), C.cyan)}
             </div>
-
             {card(<>
               <div style={{fontSize:9,color:C.muted,letterSpacing:3,marginBottom:10}}>◉ INCOME BY CATEGORY</div>
               {byCat.length===0&&<div style={{color:C.muted,fontSize:11}}>No income for this period.</div>}
@@ -400,7 +698,6 @@ function App() {
                 </div>
               ))}
             </>,{marginBottom:10})}
-
             {byExpCat.length>0&&card(<>
               <div style={{fontSize:9,color:C.muted,letterSpacing:3,marginBottom:10}}>◉ EXPENSES BY TYPE</div>
               {byExpCat.map(c=>(
@@ -415,7 +712,6 @@ function App() {
                 </div>
               ))}
             </>,{marginBottom:10})}
-
             {card(<>
               <div style={{fontSize:9,color:C.muted,letterSpacing:3,marginBottom:10}}>◈ MONTHLY P&amp;L</div>
               <div style={{display:"grid",gridTemplateColumns:"75px 1fr 1fr 1fr",fontSize:8,color:C.muted,letterSpacing:2,marginBottom:5,padding:"0 4px"}}>
@@ -438,8 +734,12 @@ function App() {
         )}
       </div>
 
+      {/* Toast */}
       {toast&&(
-        <div style={{position:"fixed",bottom:20,right:16,zIndex:999,background:toast.type==="err"?C.red:C.green,color:"#000",borderRadius:6,padding:"9px 16px",fontSize:11,fontFamily:"inherit",fontWeight:"bold",boxShadow:"0 4px 20px rgba(0,0,0,0.5)"}}>
+        <div style={{position:"fixed",bottom:20,right:16,zIndex:999,
+          background:toast.type==="err"?C.red:C.green,color:"#000",
+          borderRadius:6,padding:"9px 16px",fontSize:11,fontFamily:"inherit",
+          fontWeight:"bold",boxShadow:"0 4px 20px rgba(0,0,0,0.5)"}}>
           {toast.msg}
         </div>
       )}
