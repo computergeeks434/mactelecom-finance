@@ -32,6 +32,44 @@ const JANUARY_ENTRIES = [
   1200,400,1150,1000,450,800,800,400,2050,
   660,360,300,500
 ];
+const APRIL_DATA = [
+  {id:'apr_0',amount:250,category:INCOME_CATS[0%INCOME_CATS.length],note:'Apr transaction #1',month:'April',year:'2026',date:'2026-04-01'},
+  {id:'apr_1',amount:50,category:INCOME_CATS[1%INCOME_CATS.length],note:'Apr transaction #2',month:'April',year:'2026',date:'2026-04-01'},
+  {id:'apr_2',amount:100,category:INCOME_CATS[2%INCOME_CATS.length],note:'Apr transaction #3',month:'April',year:'2026',date:'2026-04-02'},
+  {id:'apr_3',amount:400,category:INCOME_CATS[3%INCOME_CATS.length],note:'Apr transaction #4',month:'April',year:'2026',date:'2026-04-03'},
+  {id:'apr_4',amount:100,category:INCOME_CATS[4%INCOME_CATS.length],note:'Apr transaction #5',month:'April',year:'2026',date:'2026-04-04'},
+  {id:'apr_5',amount:50,category:INCOME_CATS[5%INCOME_CATS.length],note:'Apr transaction #6',month:'April',year:'2026',date:'2026-04-05'},
+  {id:'apr_6',amount:80,category:INCOME_CATS[6%INCOME_CATS.length],note:'Apr transaction #7',month:'April',year:'2026',date:'2026-04-05'},
+  {id:'apr_7',amount:700,category:INCOME_CATS[7%INCOME_CATS.length],note:'Apr transaction #8',month:'April',year:'2026',date:'2026-04-06'},
+  {id:'apr_8',amount:200,category:INCOME_CATS[8%INCOME_CATS.length],note:'Apr transaction #9',month:'April',year:'2026',date:'2026-04-07'},
+  {id:'apr_9',amount:800,category:INCOME_CATS[9%INCOME_CATS.length],note:'Apr transaction #10',month:'April',year:'2026',date:'2026-04-08'},
+  {id:'apr_10',amount:500,category:INCOME_CATS[10%INCOME_CATS.length],note:'Apr transaction #11',month:'April',year:'2026',date:'2026-04-08'},
+  {id:'apr_11',amount:2600,category:INCOME_CATS[11%INCOME_CATS.length],note:'Apr transaction #12',month:'April',year:'2026',date:'2026-04-09'},
+  {id:'apr_12',amount:250,category:INCOME_CATS[12%INCOME_CATS.length],note:'Apr transaction #13',month:'April',year:'2026',date:'2026-04-10'},
+  {id:'apr_13',amount:700,category:INCOME_CATS[13%INCOME_CATS.length],note:'Apr transaction #14',month:'April',year:'2026',date:'2026-04-11'},
+  {id:'apr_14',amount:200,category:INCOME_CATS[14%INCOME_CATS.length],note:'Apr transaction #15',month:'April',year:'2026',date:'2026-04-12'},
+  {id:'apr_15',amount:250,category:INCOME_CATS[15%INCOME_CATS.length],note:'Apr transaction #16',month:'April',year:'2026',date:'2026-04-12'},
+  {id:'apr_16',amount:300,category:INCOME_CATS[16%INCOME_CATS.length],note:'Apr transaction #17',month:'April',year:'2026',date:'2026-04-13'},
+  {id:'apr_17',amount:400,category:INCOME_CATS[17%INCOME_CATS.length],note:'Apr transaction #18',month:'April',year:'2026',date:'2026-04-14'},
+  {id:'apr_18',amount:1000,category:INCOME_CATS[18%INCOME_CATS.length],note:'Apr transaction #19',month:'April',year:'2026',date:'2026-04-15'},
+  {id:'apr_19',amount:700,category:INCOME_CATS[19%INCOME_CATS.length],note:'Apr transaction #20',month:'April',year:'2026',date:'2026-04-16'},
+  {id:'apr_20',amount:900,category:INCOME_CATS[20%INCOME_CATS.length],note:'Apr transaction #21',month:'April',year:'2026',date:'2026-04-16'},
+  {id:'apr_21',amount:960,category:INCOME_CATS[21%INCOME_CATS.length],note:'Apr transaction #22',month:'April',year:'2026',date:'2026-04-17'},
+  {id:'apr_22',amount:200,category:INCOME_CATS[22%INCOME_CATS.length],note:'Apr transaction #23',month:'April',year:'2026',date:'2026-04-18'},
+  {id:'apr_23',amount:700,category:INCOME_CATS[23%INCOME_CATS.length],note:'Apr transaction #24',month:'April',year:'2026',date:'2026-04-19'},
+  {id:'apr_24',amount:1000,category:INCOME_CATS[24%INCOME_CATS.length],note:'Apr transaction #25',month:'April',year:'2026',date:'2026-04-20'},
+  {id:'apr_25',amount:500,category:INCOME_CATS[25%INCOME_CATS.length],note:'Apr transaction #26',month:'April',year:'2026',date:'2026-04-20'},
+  {id:'apr_26',amount:400,category:INCOME_CATS[26%INCOME_CATS.length],note:'Apr transaction #27',month:'April',year:'2026',date:'2026-04-21'},
+  {id:'apr_27',amount:550,category:INCOME_CATS[27%INCOME_CATS.length],note:'Apr transaction #28',month:'April',year:'2026',date:'2026-04-22'},
+  {id:'apr_28',amount:500,category:INCOME_CATS[28%INCOME_CATS.length],note:'Apr transaction #29',month:'April',year:'2026',date:'2026-04-23'},
+  {id:'apr_29',amount:100,category:INCOME_CATS[29%INCOME_CATS.length],note:'Apr transaction #30',month:'April',year:'2026',date:'2026-04-24'},
+  {id:'apr_30',amount:750,category:INCOME_CATS[30%INCOME_CATS.length],note:'Apr transaction #31',month:'April',year:'2026',date:'2026-04-25'},
+  {id:'apr_31',amount:850,category:INCOME_CATS[31%INCOME_CATS.length],note:'Apr transaction #32',month:'April',year:'2026',date:'2026-04-26'},
+  {id:'apr_32',amount:440,category:INCOME_CATS[32%INCOME_CATS.length],note:'Apr transaction #33',month:'April',year:'2026',date:'2026-04-27'},
+  {id:'apr_33',amount:700,category:INCOME_CATS[33%INCOME_CATS.length],note:'Apr transaction #34',month:'April',year:'2026',date:'2026-04-28'},
+  {id:'apr_34',amount:300,category:INCOME_CATS[34%INCOME_CATS.length],note:'Apr transaction #35',month:'April',year:'2026',date:'2026-04-29'},
+  {id:'apr_35',amount:1300,category:INCOME_CATS[35%INCOME_CATS.length],note:'Apr transaction #36',month:'April',year:'2026',date:'2026-04-30'},
+];
 const FEBRUARY_ENTRIES = [
   700,350,500,400,400,350,2000,210,300,750,
   700,250,500,300,300,200,350,300,600,400,
@@ -397,6 +435,7 @@ function App() {
         {id:"mar_31_eod",amount:700,category:"Miscellaneous",note:"End of day collection",month:"March",year:"2026",date:"2026-03-31"},
         ...FEBRUARY_ENTRIES.map((amt,i)=>({id:`feb_${i}`,amount:amt,category:INCOME_CATS[i%INCOME_CATS.length],note:`Feb transaction #${i+1}`,month:"February",year:"2026",date:`2026-02-${String(i+1).padStart(2,"0")}`})),
         ...JANUARY_ENTRIES.map((amt,i)=>({id:`jan_${i}`,amount:amt,category:INCOME_CATS[i%INCOME_CATS.length],note:`Jan transaction #${i+1}`,month:"January",year:"2026",date:`2026-01-${String(i+1).padStart(2,"0")}`})),
+        ...APRIL_DATA,
       ];
       store.set("mactelecom_entries",inc);
       store.set("mactelecom_expenses",exp);
@@ -413,6 +452,10 @@ function App() {
       if(!inc.some(e=>e.month==="January"&&e.year==="2026")){
         const js=JANUARY_ENTRIES.map((amt,i)=>({id:`jan_${i}`,amount:amt,category:INCOME_CATS[i%INCOME_CATS.length],note:`Jan transaction #${i+1}`,month:"January",year:"2026",date:`2026-01-${String(i+1).padStart(2,"0")}`}));
         inc=[...inc,...js]; store.set("mactelecom_entries",inc);
+      }
+      if(!inc.some(e=>e.month==="April"&&e.year==="2026")){
+        inc=[...inc,...APRIL_DATA];
+        store.set("mactelecom_entries",inc);
       }
     }
     setEntries(inc); setExpenses(exp); setLoaded(true);
