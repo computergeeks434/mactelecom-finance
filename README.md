@@ -70,6 +70,6 @@ Data is saved in your browser's **localStorage** — it persists across visits o
 
 **Mactelecom Networks**  
 Afya Business Plaza, 1st Floor Room 109, Tom Mboya Street, Nairobi CBD  
-📞 +254 726 834 930 | +254 788 390 924  
+📞 +254 726 834 930 | +254 142656335 
 🌐 www.mactelecomnetworks.net  
 📧 computergeeks434@protonmail.com
